@@ -6,15 +6,16 @@ go(Host, What0) ->
   % timer:sleep(666),
   {ok, Sock} = gen_tcp:connect(Host, 26486, [binary, {packet, 0}]),
   What = temp(What0),
+  % Pkt = mk_tx_packet(<<16#ff, 16#1e, 16#c8, 16#04, 16#34, 16#03, 16#08, 16#09>>),
   Pkt = mk_tx_packet(<<16#ff, 16#1e, 16#c8, 16#04, 16#b6, 16#03, 16#02, What>>),
   ok = gen_tcp:send(Sock, Pkt),
   Res = do_recv(Sock),
   ok = gen_tcp:close(Sock),
   io:format("Res: ~p~n", [Res]),
-  Val = decode_value(Res),
+  Val = decode_message(Res),
   io:format("~p~n", [Val]).
 
-% every third "address" appears to be a sensor
+% every third "address" appears to be a float
 temp(outdoor) -> 16#0c;
 temp(radiator) -> 16#0f;
 temp(hot_water) -> 16#1b;
@@ -54,29 +55,29 @@ unescape(Bin) ->
                 binary_to_list(Bin)),
   list_to_binary(Unescaped).
 
-decode_value(Bin0) ->
+decode_message(Bin0) ->
   Bin = unescape(Bin0),
   PayloadLen = byte_size(Bin)-3,
   <<16#3d,Payload:PayloadLen/binary, Csum, 16#3e>> = Bin,
   case xor_csum(Payload) of
     Csum ->
-      <<Status:8,Type:8,Msg/binary>> = Payload,
-      case Type of
-        0 -> % EXOFLOAT
-          Val =
-            case Msg of
-              <<16#ff,16#ff,16#ff,16#ff>> ->
-                'NaN';
-              <<V:32/float-little>> ->
-                V
-            end,
-          {status(Status), Val};
-        1 -> % EXOSHORT - only status??
-          status(Status)
+      <<MsgLength,Msg/binary>> = Payload,
+      case MsgLength =:= byte_size(Msg) of
+        true ->
+          value(Msg);
+        false ->
+          {error, bad_length}
       end;
     _ ->
       {error, bad_checksum}
   end.
+
+% EXOFLOAT - 0x00 ++ float32
+value(<<16#00,16#ffffffff:32>>) -> 'NaN';
+value(<<16#00,V:32/float-little>>) -> V;
+% EXOSHORT - one byte
+value(<<Short>>) -> status(Short);
+value(_) -> {error, unknown_data}.
 
 status(0) -> stopped;
 status(S) when (S > 0) and (S < 5) -> starting;

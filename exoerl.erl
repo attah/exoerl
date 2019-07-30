@@ -27,6 +27,7 @@ temp(outdoor) -> <<16#02, 16#0c>>;
 temp(radiator) -> <<16#02, 16#0f>>;
 temp(hot_water) -> <<16#02, 16#1b>>;
 temp(district_heating) -> <<16#02, 16#54>>;
+temp(radiator_regulator) -> <<16#04, 16#d8>>;
 temp(hot_water_regulator) -> <<16#04, 16#e4>>;
 temp(Other) when is_binary(Other) -> Other;
 temp(Other) -> <<16#02, Other>>.
